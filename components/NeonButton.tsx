@@ -25,16 +25,24 @@ export default function NeonButton({
     },
   };
 
+  const hoverGlow: Record<Variant, React.CSSProperties> = {
+    primary: { boxShadow: '0 0 24px rgba(0,245,255,0.7), 0 0 48px rgba(0,245,255,0.3)', filter: 'brightness(1.15)' },
+    secondary: { boxShadow: '0 0 12px rgba(0,245,255,0.25)' },
+    danger: { boxShadow: '0 0 12px rgba(255,0,170,0.25)' },
+  };
+
   return (
     <button
       onClick={onClick}
       disabled={disabled}
+      onMouseEnter={e => { if (!disabled) Object.assign((e.currentTarget as HTMLButtonElement).style, hoverGlow[variant]); }}
+      onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.boxShadow = styles[variant].boxShadow as string ?? ''; (e.currentTarget as HTMLButtonElement).style.filter = ''; }}
       style={{
         fontFamily: "'Orbitron', sans-serif",
         fontWeight: 700, fontSize: '11px', letterSpacing: '1.5px',
         padding: '10px 20px', cursor: disabled ? 'not-allowed' : 'pointer',
         opacity: disabled ? 0.5 : 1,
-        transition: 'opacity 0.2s, box-shadow 0.2s',
+        transition: 'opacity 0.2s, box-shadow 0.15s, filter 0.15s',
         textTransform: 'uppercase',
         ...styles[variant],
         ...style,
