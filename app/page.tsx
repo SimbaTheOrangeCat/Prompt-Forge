@@ -1,7 +1,6 @@
 'use client';
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { Suspense } from 'react';
 import SectionLabel from '@/components/SectionLabel';
 import NeonButton from '@/components/NeonButton';
 import TagToggle from '@/components/TagToggle';
@@ -54,16 +53,9 @@ function BuilderInner() {
   const [newBooster, setNewBooster] = useState('');
   const [examples, setExamples] = useState('');
   const [result, setResult] = useState('');
-  const [error, setError] = useState('');
   const [toast, setToast] = useState(false);
   const [toastMsg, setToastMsg] = useState('');
-  const [apiKey, setApiKey] = useState('');
-  const [testResponse, setTestResponse] = useState('');
-  const [testing, setTesting] = useState(false);
-  const [testError, setTestError] = useState('');
-  const [showApiKey, setShowApiKey] = useState(false);
 
-  // Load share config from URL
   useEffect(() => {
     const share = searchParams.get('share');
     if (share) {
@@ -77,14 +69,11 @@ function BuilderInner() {
     }
     const saved = typeof window !== 'undefined' ? localStorage.getItem('customBoosters') : null;
     if (saved) setCustomBoosters(JSON.parse(saved));
-    const savedKey = typeof window !== 'undefined' ? localStorage.getItem('anthropicApiKey') : null;
-    if (savedKey) setApiKey(savedKey);
   }, [searchParams]);
 
   // Live preview
   useEffect(() => {
-    if (!task.trim()) { setResult(''); setError(''); return; }
-    setError('');
+    if (!task.trim()) { setResult(''); return; }
     setResult(buildPrompt({ task, model, role, outputFormat, context, constraints, tone, boosters: activeBoosters, examples }));
   }, [task, model, role, outputFormat, context, constraints, tone, activeBoosters, examples]);
 
@@ -108,16 +97,10 @@ function BuilderInner() {
     setActiveBoosters(prev => prev.filter(b => b !== label));
   };
 
-  const saveApiKey = () => {
-    localStorage.setItem('anthropicApiKey', apiKey);
-    showToast('API key saved');
-  };
-
   const handleReset = () => {
     setTask(''); setModel('Claude'); setRole(''); setOutputFormat('Paragraph');
     setContext(''); setConstraints(''); setTone('Professional');
-    setActiveBoosters([]); setExamples(''); setResult(''); setError('');
-    setTestResponse(''); setTestError('');
+    setActiveBoosters([]); setExamples(''); setResult('');
   };
 
   const showToast = (msg: string) => { setToastMsg(msg); setToast(true); };
@@ -131,25 +114,6 @@ function BuilderInner() {
     copyToClipboard(url, () => showToast('Share link copied'));
   };
 
-  const handleTest = async () => {
-    if (!result) return;
-    if (!apiKey) { setTestError('Add your Anthropic API key in settings to test prompts.'); return; }
-    setTesting(true); setTestResponse(''); setTestError('');
-    try {
-      const res = await fetch('/api/test', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt: result, apiKey }),
-      });
-      const data = await res.json();
-      if (data.error) setTestError(data.error);
-      else setTestResponse(data.response);
-    } catch {
-      setTestError('Failed to reach API. Make sure you are running locally (npm run dev).');
-    }
-    setTesting(false);
-  };
-
   const allBoosters = [
     ...defaultBoosters,
     ...customBoosters.map(label => ({ label, color: 'cyan' as BoosterColor })),
@@ -158,31 +122,6 @@ function BuilderInner() {
   return (
     <div>
       <Toast visible={toast} onHide={() => setToast(false)} message={toastMsg} />
-
-      {/* API Key Settings */}
-      <div style={{ marginBottom: '24px', background: 'var(--panel)', border: '1px solid var(--border)', padding: '12px 16px' }}>
-        <button
-          onClick={() => setShowApiKey(v => !v)}
-          style={{ fontFamily: "'Share Tech Mono', monospace", fontSize: '10px', color: 'var(--dim)', letterSpacing: '2px', background: 'none', border: 'none', cursor: 'pointer', textTransform: 'uppercase' }}
-        >
-          {showApiKey ? '▼' : '▶'} API Settings (for AI features)
-        </button>
-        {showApiKey && (
-          <div style={{ marginTop: '12px', display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-            <input
-              type="password"
-              value={apiKey}
-              onChange={e => setApiKey(e.target.value)}
-              placeholder="sk-ant-..."
-              style={{ flex: 1, minWidth: '200px' }}
-            />
-            <NeonButton variant="secondary" onClick={saveApiKey}>Save Key</NeonButton>
-            <span style={{ fontFamily: "'Share Tech Mono', monospace", fontSize: '10px', color: 'var(--dim)' }}>
-              Stored locally. Required for Test Prompt.
-            </span>
-          </div>
-        )}
-      </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '32px' }} className="two-col">
         {/* Form */}
@@ -273,40 +212,13 @@ function BuilderInner() {
         {/* Output */}
         <div>
           <SectionLabel>Live Output</SectionLabel>
-          {error ? (
-            <div className="panel-accent-top" style={{ background: 'var(--panel)', border: '1px solid var(--magenta)', padding: '20px', minHeight: '180px', display: 'flex', alignItems: 'center' }}>
-              <span style={{ fontFamily: "'Share Tech Mono', monospace", fontSize: '12px', color: 'var(--magenta)' }}>{error}</span>
-            </div>
-          ) : (
-            <OutputBox value={result} placeholder="Start typing your task to see the live preview..." />
-          )}
-
+          <OutputBox value={result} placeholder="Start typing your task to see the live preview..." />
           {result && (
             <div style={{ marginTop: '8px', background: 'var(--panel)', border: '1px solid var(--border)', padding: '10px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <span style={{ fontFamily: "'Share Tech Mono', monospace", fontSize: '10px', color: 'var(--dim)' }}>
                 {result.split(/\s+/).length} WORDS · {result.length} CHARS
               </span>
               <span style={{ fontFamily: "'Share Tech Mono', monospace", fontSize: '10px', color: 'var(--green)' }}>● LIVE</span>
-            </div>
-          )}
-
-          {/* Test Prompt */}
-          {result && (
-            <div style={{ marginTop: '20px' }}>
-              <SectionLabel>Test Prompt</SectionLabel>
-              <NeonButton onClick={handleTest} disabled={testing || !result}>
-                {testing ? '◈ Running...' : '▶ Test on Claude'}
-              </NeonButton>
-              {testError && (
-                <div style={{ marginTop: '12px', fontFamily: "'Share Tech Mono', monospace", fontSize: '11px', color: 'var(--magenta)', background: 'rgba(255,0,170,0.05)', border: '1px solid rgba(255,0,170,0.2)', padding: '12px' }}>
-                  {testError}
-                </div>
-              )}
-              {testResponse && (
-                <div style={{ marginTop: '12px' }}>
-                  <OutputBox value={testResponse} />
-                </div>
-              )}
             </div>
           )}
         </div>
