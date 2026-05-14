@@ -1,5 +1,5 @@
 'use client';
-import { useState, useCallback, useEffect, Suspense } from 'react';
+import { useState, useCallback, useEffect, Suspense } from 'react'; // useEffect kept for share URL decode
 import { useSearchParams } from 'next/navigation';
 import SectionLabel from '@/components/SectionLabel';
 import NeonButton from '@/components/NeonButton';
@@ -71,11 +71,10 @@ function BuilderInner() {
     if (saved) setCustomBoosters(JSON.parse(saved));
   }, [searchParams]);
 
-  // Live preview
-  useEffect(() => {
-    if (!task.trim()) { setResult(''); return; }
+  const handleForge = () => {
+    if (!task.trim()) return;
     setResult(buildPrompt({ task, model, role, outputFormat, context, constraints, tone, boosters: activeBoosters, examples }));
-  }, [task, model, role, outputFormat, context, constraints, tone, activeBoosters, examples]);
+  };
 
   const toggleBooster = (label: string) => {
     setActiveBoosters(prev => prev.includes(label) ? prev.filter(b => b !== label) : [...prev, label]);
@@ -201,6 +200,7 @@ function BuilderInner() {
           </div>
 
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+            <NeonButton onClick={handleForge}>⚡ Forge Prompt</NeonButton>
             <NeonButton variant="secondary" onClick={handleReset}>↺ Reset</NeonButton>
             <NeonButton variant="secondary" onClick={handleCopy} disabled={!result}>⎘ Copy</NeonButton>
             <NeonButton variant="secondary" onClick={() => result && exportAsTxt(result)} disabled={!result}>↓ .txt</NeonButton>
@@ -211,14 +211,14 @@ function BuilderInner() {
 
         {/* Output */}
         <div>
-          <SectionLabel>Live Output</SectionLabel>
-          <OutputBox value={result} placeholder="Start typing your task to see the live preview..." />
+          <SectionLabel>Compiled Output</SectionLabel>
+          <OutputBox value={result} />
           {result && (
             <div style={{ marginTop: '8px', background: 'var(--panel)', border: '1px solid var(--border)', padding: '10px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <span style={{ fontFamily: "'Share Tech Mono', monospace", fontSize: '10px', color: 'var(--dim)' }}>
                 {result.split(/\s+/).length} WORDS · {result.length} CHARS
               </span>
-              <span style={{ fontFamily: "'Share Tech Mono', monospace", fontSize: '10px', color: 'var(--green)' }}>● LIVE</span>
+              <span style={{ fontFamily: "'Share Tech Mono', monospace", fontSize: '10px', color: 'var(--green)' }}>● COMPILED</span>
             </div>
           )}
         </div>
