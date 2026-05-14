@@ -114,7 +114,19 @@ select option {
   background: linear-gradient(90deg, var(--cyan), var(--magenta), transparent);
 }
 
-@media (max-width: 700px) {
+@media (max-width: 768px) {
   .logo-title { font-size: 20px !important; }
   .two-col { grid-template-columns: 1fr !important; }
+  .content-wrapper { padding: 0 12px; }
+
+  input, textarea, select { font-size: 14px; }
+
+  main { padding: 16px 0 !important; }
+
+  header .content-wrapper { flex-direction: column; align-items: flex-start !important; gap: '8px'; }
+}
+
+@media (max-width: 480px) {
+  .logo-title { font-size: 16px !important; }
+  .content-wrapper { padding: 0 8px; }
 }

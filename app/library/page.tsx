@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation';
 import SectionLabel from '@/components/SectionLabel';
 import { templates } from '@/lib/templates';
 
-const cats = ['All Templates', 'Coding', 'Writing', 'Analysis', 'Creative', 'Business'];
+const cats = ['All Templates', 'Coding', 'Writing', 'Analysis', 'Creative', 'Business', 'Marketing', 'Education'];
 
 export default function LibraryPage() {
   const [active, setActive] = useState('All Templates');

@@ -1,5 +1,7 @@
 'use client';
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
+import { useSearchParams } from 'next/navigation';
+import { Suspense } from 'react';
 import SectionLabel from '@/components/SectionLabel';
 import NeonButton from '@/components/NeonButton';
 import TagToggle from '@/components/TagToggle';
@@ -8,10 +10,12 @@ import OutputBox from '@/components/OutputBox';
 import Toast from '@/components/Toast';
 import { buildPrompt } from '@/lib/buildPrompt';
 import { copyToClipboard } from '@/lib/clipboard';
+import { exportAsTxt, exportAsMd } from '@/lib/export';
+import { buildShareUrl, decodeConfig } from '@/lib/share';
 
 type BoosterColor = 'cyan' | 'magenta' | 'green' | 'yellow';
 
-const boosters: { label: string; color: BoosterColor }[] = [
+const defaultBoosters: { label: string; color: BoosterColor }[] = [
   { label: 'Chain-of-Thought', color: 'cyan' },
   { label: 'Few-Shot Examples', color: 'cyan' },
   { label: 'Step-by-Step', color: 'cyan' },
@@ -36,7 +40,8 @@ const labelStyle: React.CSSProperties = {
   display: 'block', marginBottom: '8px',
 };
 
-export default function BuilderPage() {
+function BuilderInner() {
+  const searchParams = useSearchParams();
   const [task, setTask] = useState('');
   const [model, setModel] = useState('Claude');
   const [role, setRole] = useState('');
@@ -45,39 +50,139 @@ export default function BuilderPage() {
   const [constraints, setConstraints] = useState('');
   const [tone, setTone] = useState('Professional');
   const [activeBoosters, setActiveBoosters] = useState<string[]>([]);
+  const [customBoosters, setCustomBoosters] = useState<string[]>([]);
+  const [newBooster, setNewBooster] = useState('');
   const [examples, setExamples] = useState('');
   const [result, setResult] = useState('');
   const [error, setError] = useState('');
   const [toast, setToast] = useState(false);
+  const [toastMsg, setToastMsg] = useState('');
+  const [apiKey, setApiKey] = useState('');
+  const [testResponse, setTestResponse] = useState('');
+  const [testing, setTesting] = useState(false);
+  const [testError, setTestError] = useState('');
+  const [showApiKey, setShowApiKey] = useState(false);
+
+  // Load share config from URL
+  useEffect(() => {
+    const share = searchParams.get('share');
+    if (share) {
+      const cfg = decodeConfig(share);
+      if (cfg) {
+        setTask(cfg.task); setModel(cfg.model); setRole(cfg.role);
+        setOutputFormat(cfg.outputFormat); setContext(cfg.context);
+        setConstraints(cfg.constraints); setTone(cfg.tone);
+        setActiveBoosters(cfg.boosters); setExamples(cfg.examples);
+      }
+    }
+    const saved = typeof window !== 'undefined' ? localStorage.getItem('customBoosters') : null;
+    if (saved) setCustomBoosters(JSON.parse(saved));
+    const savedKey = typeof window !== 'undefined' ? localStorage.getItem('anthropicApiKey') : null;
+    if (savedKey) setApiKey(savedKey);
+  }, [searchParams]);
+
+  // Live preview
+  useEffect(() => {
+    if (!task.trim()) { setResult(''); setError(''); return; }
+    setError('');
+    setResult(buildPrompt({ task, model, role, outputFormat, context, constraints, tone, boosters: activeBoosters, examples }));
+  }, [task, model, role, outputFormat, context, constraints, tone, activeBoosters, examples]);
 
   const toggleBooster = (label: string) => {
     setActiveBoosters(prev => prev.includes(label) ? prev.filter(b => b !== label) : [...prev, label]);
   };
 
-  const handleForge = () => {
-    if (!task.trim()) {
-      setError('[ ERROR: TASK FIELD IS REQUIRED — DEFINE YOUR OBJECTIVE ]');
-      setResult('');
-      return;
-    }
-    setError('');
-    const prompt = buildPrompt({ task, model, role, outputFormat, context, constraints, tone, boosters: activeBoosters, examples });
-    setResult(prompt);
+  const addCustomBooster = () => {
+    const label = newBooster.trim();
+    if (!label || customBoosters.includes(label)) return;
+    const updated = [...customBoosters, label];
+    setCustomBoosters(updated);
+    localStorage.setItem('customBoosters', JSON.stringify(updated));
+    setNewBooster('');
+  };
+
+  const removeCustomBooster = (label: string) => {
+    const updated = customBoosters.filter(b => b !== label);
+    setCustomBoosters(updated);
+    localStorage.setItem('customBoosters', JSON.stringify(updated));
+    setActiveBoosters(prev => prev.filter(b => b !== label));
+  };
+
+  const saveApiKey = () => {
+    localStorage.setItem('anthropicApiKey', apiKey);
+    showToast('API key saved');
   };
 
   const handleReset = () => {
     setTask(''); setModel('Claude'); setRole(''); setOutputFormat('Paragraph');
     setContext(''); setConstraints(''); setTone('Professional');
     setActiveBoosters([]); setExamples(''); setResult(''); setError('');
+    setTestResponse(''); setTestError('');
   };
 
+  const showToast = (msg: string) => { setToastMsg(msg); setToast(true); };
+
   const handleCopy = useCallback(() => {
-    if (result) copyToClipboard(result, () => setToast(true));
+    if (result) copyToClipboard(result, () => showToast('Copied to clipboard'));
   }, [result]);
+
+  const handleShare = () => {
+    const url = buildShareUrl({ task, model, role, outputFormat, context, constraints, tone, boosters: activeBoosters, examples });
+    copyToClipboard(url, () => showToast('Share link copied'));
+  };
+
+  const handleTest = async () => {
+    if (!result) return;
+    if (!apiKey) { setTestError('Add your Anthropic API key in settings to test prompts.'); return; }
+    setTesting(true); setTestResponse(''); setTestError('');
+    try {
+      const res = await fetch('/api/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: result, apiKey }),
+      });
+      const data = await res.json();
+      if (data.error) setTestError(data.error);
+      else setTestResponse(data.response);
+    } catch {
+      setTestError('Failed to reach API. Make sure you are running locally (npm run dev).');
+    }
+    setTesting(false);
+  };
+
+  const allBoosters = [
+    ...defaultBoosters,
+    ...customBoosters.map(label => ({ label, color: 'cyan' as BoosterColor })),
+  ];
 
   return (
     <div>
-      <Toast visible={toast} onHide={() => setToast(false)} />
+      <Toast visible={toast} onHide={() => setToast(false)} message={toastMsg} />
+
+      {/* API Key Settings */}
+      <div style={{ marginBottom: '24px', background: 'var(--panel)', border: '1px solid var(--border)', padding: '12px 16px' }}>
+        <button
+          onClick={() => setShowApiKey(v => !v)}
+          style={{ fontFamily: "'Share Tech Mono', monospace", fontSize: '10px', color: 'var(--dim)', letterSpacing: '2px', background: 'none', border: 'none', cursor: 'pointer', textTransform: 'uppercase' }}
+        >
+          {showApiKey ? '▼' : '▶'} API Settings (for AI features)
+        </button>
+        {showApiKey && (
+          <div style={{ marginTop: '12px', display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+            <input
+              type="password"
+              value={apiKey}
+              onChange={e => setApiKey(e.target.value)}
+              placeholder="sk-ant-..."
+              style={{ flex: 1, minWidth: '200px' }}
+            />
+            <NeonButton variant="secondary" onClick={saveApiKey}>Save Key</NeonButton>
+            <span style={{ fontFamily: "'Share Tech Mono', monospace", fontSize: '10px', color: 'var(--dim)' }}>
+              Stored locally. Required for Test Prompt.
+            </span>
+          </div>
+        )}
+      </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '32px' }} className="two-col">
         {/* Form */}
@@ -127,9 +232,27 @@ export default function BuilderPage() {
           <div style={fieldStyle}>
             <label style={labelStyle}>Technique Boosters</label>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-              {boosters.map(b => (
-                <TagToggle key={b.label} label={b.label} color={b.color} active={activeBoosters.includes(b.label)} onToggle={() => toggleBooster(b.label)} />
+              {allBoosters.map(b => (
+                <div key={b.label} style={{ position: 'relative' }}>
+                  <TagToggle label={b.label} color={b.color} active={activeBoosters.includes(b.label)} onToggle={() => toggleBooster(b.label)} />
+                  {customBoosters.includes(b.label) && (
+                    <button
+                      onClick={() => removeCustomBooster(b.label)}
+                      style={{ position: 'absolute', top: '-6px', right: '-6px', width: '14px', height: '14px', borderRadius: '50%', background: 'var(--magenta)', border: 'none', color: 'white', fontSize: '9px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}
+                    >×</button>
+                  )}
+                </div>
               ))}
+            </div>
+            <div style={{ display: 'flex', gap: '8px', marginTop: '10px' }}>
+              <input
+                value={newBooster}
+                onChange={e => setNewBooster(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && addCustomBooster()}
+                placeholder="Add custom booster..."
+                style={{ flex: 1, fontSize: '12px', padding: '6px 10px' }}
+              />
+              <NeonButton variant="secondary" onClick={addCustomBooster} style={{ padding: '6px 12px', fontSize: '10px' }}>+ Add</NeonButton>
             </div>
           </div>
 
@@ -138,34 +261,64 @@ export default function BuilderPage() {
             <textarea value={examples} onChange={e => setExamples(e.target.value)} rows={3} placeholder="Optional: provide examples to guide the AI..." />
           </div>
 
-          <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-            <NeonButton onClick={handleForge}>⚡ Forge Prompt</NeonButton>
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
             <NeonButton variant="secondary" onClick={handleReset}>↺ Reset</NeonButton>
-            <NeonButton variant="secondary" onClick={handleCopy} disabled={!result}>⎘ Copy Result</NeonButton>
+            <NeonButton variant="secondary" onClick={handleCopy} disabled={!result}>⎘ Copy</NeonButton>
+            <NeonButton variant="secondary" onClick={() => result && exportAsTxt(result)} disabled={!result}>↓ .txt</NeonButton>
+            <NeonButton variant="secondary" onClick={() => result && exportAsMd(result)} disabled={!result}>↓ .md</NeonButton>
+            <NeonButton variant="secondary" onClick={handleShare} disabled={!result}>⇗ Share</NeonButton>
           </div>
         </div>
 
         {/* Output */}
         <div>
-          <SectionLabel>Compiled Output</SectionLabel>
+          <SectionLabel>Live Output</SectionLabel>
           {error ? (
             <div className="panel-accent-top" style={{ background: 'var(--panel)', border: '1px solid var(--magenta)', padding: '20px', minHeight: '180px', display: 'flex', alignItems: 'center' }}>
               <span style={{ fontFamily: "'Share Tech Mono', monospace", fontSize: '12px', color: 'var(--magenta)' }}>{error}</span>
             </div>
           ) : (
-            <OutputBox value={result} />
+            <OutputBox value={result} placeholder="Start typing your task to see the live preview..." />
           )}
 
           {result && (
-            <div style={{ marginTop: '12px', background: 'var(--panel)', border: '1px solid var(--border)', padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ marginTop: '8px', background: 'var(--panel)', border: '1px solid var(--border)', padding: '10px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <span style={{ fontFamily: "'Share Tech Mono', monospace", fontSize: '10px', color: 'var(--dim)' }}>
                 {result.split(/\s+/).length} WORDS · {result.length} CHARS
               </span>
-              <span style={{ fontFamily: "'Share Tech Mono', monospace", fontSize: '10px', color: 'var(--green)' }}>● COMPILED</span>
+              <span style={{ fontFamily: "'Share Tech Mono', monospace", fontSize: '10px', color: 'var(--green)' }}>● LIVE</span>
+            </div>
+          )}
+
+          {/* Test Prompt */}
+          {result && (
+            <div style={{ marginTop: '20px' }}>
+              <SectionLabel>Test Prompt</SectionLabel>
+              <NeonButton onClick={handleTest} disabled={testing || !result}>
+                {testing ? '◈ Running...' : '▶ Test on Claude'}
+              </NeonButton>
+              {testError && (
+                <div style={{ marginTop: '12px', fontFamily: "'Share Tech Mono', monospace", fontSize: '11px', color: 'var(--magenta)', background: 'rgba(255,0,170,0.05)', border: '1px solid rgba(255,0,170,0.2)', padding: '12px' }}>
+                  {testError}
+                </div>
+              )}
+              {testResponse && (
+                <div style={{ marginTop: '12px' }}>
+                  <OutputBox value={testResponse} />
+                </div>
+              )}
             </div>
           )}
         </div>
       </div>
     </div>
+  );
+}
+
+export default function BuilderPage() {
+  return (
+    <Suspense fallback={<div style={{ color: 'var(--dim)', fontFamily: "'Share Tech Mono', monospace", padding: '20px' }}>Loading...</div>}>
+      <BuilderInner />
+    </Suspense>
   );
 }

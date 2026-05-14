@@ -1,7 +1,7 @@
 'use client';
 import { useEffect } from 'react';
 
-export default function Toast({ visible, onHide }: { visible: boolean; onHide: () => void }) {
+export default function Toast({ visible, onHide, message }: { visible: boolean; onHide: () => void; message?: string }) {
   useEffect(() => {
     if (visible) {
       const t = setTimeout(onHide, 2000);
@@ -21,7 +21,7 @@ export default function Toast({ visible, onHide }: { visible: boolean; onHide: (
       zIndex: 9999,
       boxShadow: '0 0 20px rgba(0,255,136,0.4)',
     }}>
-      COPIED TO NEURAL BUFFER
+      {message ? message.toUpperCase() : 'COPIED TO NEURAL BUFFER'}
     </div>
   );
 }

@@ -1,9 +1,13 @@
 import type { NextConfig } from "next";
 
+const isStaticExport = process.env.STATIC_EXPORT === 'true';
+
 const nextConfig: NextConfig = {
-  output: 'export',
-  basePath: '/Prompt-Forge',
-  images: { unoptimized: true },
+  ...(isStaticExport ? {
+    output: 'export',
+    basePath: '/Prompt-Forge',
+    images: { unoptimized: true },
+  } : {}),
 };
 
 export default nextConfig;
